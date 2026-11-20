@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from itertools import count
 import sqlite3
 
 from rules.binding import BoundRecipe, bind_recipe
@@ -18,27 +17,12 @@ class IssuedSheet:
 
 
 def build_fixed_sheet(number: int, bound: BoundRecipe, displays: tuple[CellTotal, ...]) -> FixedSheet:
-    facts = {slot.slot_id: slot for slot in bound.snapshot.slots}
-    used_ids = set(facts)
-    emitted = set()
-    local_number = count(1)
-    slots = []
-    cells = []
-    for cell in bound.recipe.cells:
-        local_ids = {}
-        for slot_id in dict.fromkeys(cell.slots):
-            packed_id = slot_id
-            if slot_id in emitted:
-                packed_id = f'cell-slot-{next(local_number)}'
-                while packed_id in used_ids:
-                    packed_id = f'cell-slot-{next(local_number)}'
-                used_ids.add(packed_id)
-            local_ids[slot_id] = packed_id
-            fact = facts[slot_id]
-            slots.append(FrozenSlot(packed_id, fact.revision, fact.count, fact.capacity))
-        emitted.update(local_ids)
-        cells.append(FrozenCell(cell.name, tuple(local_ids[slot_id] for slot_id in cell.slots)))
-    basis = WritebackBasis(tuple(slots), tuple(cells))
+    # V1 pieces key basis.slots by the original slot id and cells keep those
+    # references, so slots shared between cells stay shared in the piece.
+    slots = tuple(FrozenSlot(slot.slot_id, slot.revision, slot.count, slot.capacity)
+                  for slot in bound.snapshot.slots)
+    cells = tuple(FrozenCell(cell.name, cell.slots) for cell in bound.recipe.cells)
+    basis = WritebackBasis(slots, cells)
     return FixedSheet(number, bound.snapshot.batch_id, bound.recipe.recipe_id, displays, basis)
 
 
